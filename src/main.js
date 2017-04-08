@@ -3,28 +3,127 @@
 import React from 'react'
 import {
   AppRegistry,
-  StyleSheet,
   View,
   Text,
   TouchableOpacity
 } from 'react-native'
 
-import {
-  Router,
-  Scene,
-  Actions,
-  ActionConst,
-  Modal
-} from 'react-native-router-flux'
-
+import { createResponder } from 'react-native-gesture-responder'
 import * as force from 'd3-force'
+import _ from 'underscore'
 
 const d3 = {
   force
 }
 
 export default function (platform) {
-  let Polipan = React.createClass({
+  let main = React.createClass({
+    getInitialState() {
+      return {
+        nodes: null,
+        dimensions: { width: 0, height: 0 },
+        focusPos: { x: 0, y: 0 },
+        offsetPos: { x: 0, y: 0 },
+        zoom: 1.0,
+      }
+    },
+    componentWillMount() {
+      this.updateHashtags(this.props, this.state)
+      this.gestureResponder = createResponder({
+        onStartShouldSetResponder: (evt, gestureState) => true,
+        onStartShouldSetResponderCapture: (evt, gestureState) => false,
+        onMoveShouldSetResponder: (evt, gestureState) => true,
+        onMoveShouldSetResponderCapture: (evt, gestureState) => false,
+        onResponderMove: (evt, gestureState) => {
+          if (gestureState.pinch && gestureState.previousPinch) {
+            let new_zoom = this.state.zoom * gestureState.pinch / gestureState.previousPinch
+            new_zoom = Math.min(2, Math.max(0.5, new_zoom))
+            this.setState({
+              zoom: new_zoom
+            })
+          }
+          else {
+            this.setState({
+              offsetPos: { x: gestureState.dx, y: gestureState.dy }
+            })
+          }
+        },
+        onResponderRelease: (evt, gestureState) => {
+          this.setState({
+            focusPos: {
+              x: this.state.focusPos.x + this.state.offsetPos.x,
+              y: this.state.focusPos.y + this.state.offsetPos.y
+            },
+            offsetPos: { x: 0, y: 0 },
+          })
+        }
+      })
+    },
+    updateHashtags(props, state) {
+      var hashtags = []
+      for (var i = 0; i < 100; ++i) {
+        hashtags.push({
+          id: i + 1,
+          name: 'text',
+        })
+      }
+      hashtags = hashtags
+        .map((p, index) => {
+          var radius
+          if (index < 1) {
+            radius = 40
+          }
+          else if (index < 2) {
+            radius = 35
+          }
+          else if (index < 3) {
+            radius = 30
+          }
+          else if (index < 10) {
+            radius = 25
+          }
+          else if (index < 25) {
+            radius = 18
+          }
+          else if (index < 50) {
+            radius = 13
+          }
+          else if (index < 75) {
+            radius = 10
+          }
+          else {
+            radius = 5
+          }
+          return _.extend(p, {
+            radius: radius / 3,
+            x: NaN,
+            y: NaN,
+          })
+        })
+      this.simulation = d3.force.forceSimulation(hashtags)
+        .velocityDecay(0.4)
+        .force("center", d3.force.forceCenter())
+        .force("x", d3.force.forceX().strength(0.02))
+        .force("y", d3.force.forceY().strength(0.02))
+        .force("collide", d3.force.forceCollide().radius(function (d) { return d.radius + 2 }))
+        .stop()
+      this.setState({
+        nodes: this.simulation.nodes()
+      }, this._onNextTick)
+    },
+    _onNextTick() {
+      this.simulation.tick()
+      this.setState({
+        nodes: this.simulation.nodes()
+      })
+      setTimeout(this._onNextTick, 0)
+    },
+    handleLayout(e) {
+      let { width, height } = e.nativeEvent.layout
+      this.setState({
+        dimensions: { width, height }
+      })
+    },
     render() {
       var hashtags = this.state.nodes
       if (hashtags.length > 0) {
@@ -48,7 +147,7 @@ export default function (platform) {
                     { scale: radius / 100 },
                   ]
                 }}>
-                <TouchableOpacity
+                <View
                   style={{
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -56,8 +155,7 @@ export default function (platform) {
                     width: 200,
                     height: 200,
                     borderRadius: 100,
-                  }}
-                  onPress={() => this.handlePressHashtag(data)}>
+                  }}>
                   <Text
                     style={{
                       fontSize: 44,
@@ -66,27 +164,7 @@ export default function (platform) {
                       padding: 20,
                       backgroundColor: 'transparent'
                     }} numberOfLines={2}>{data.name}</Text>
-                </TouchableOpacity>
-                {
-                  idx < 3 &&
-                  <View
-                    style={{
-                      position: 'absolute',
-                      top: 155,
-                      left: 155,
-                      width: 30,
-                      height: 30,
-                      borderRadius: 15,
-                      borderWidth: 2,
-                      borderColor: 'black',
-                      backgroundColor: 'white',
-                      justifyContent: 'center',
-                      alignItems: 'center',
-                      overflow: 'hidden'
-                    }}>
-                    <Text style={[Stylesheet.text_bold]}>{idx + 1}위</Text>
-                  </View>
-                }
+                </View>
               </View>
             )
           })
@@ -103,20 +181,18 @@ export default function (platform) {
             style={{
               flex: 1,
               backgroundColor: 'rgb(51,51,51)',
-              overflow: 'hidden',
-              marginTop: this.props.platform === 'ios' ? 70 : 50
+              overflow: 'hidden'
             }}
             onLayout={this.handleLayout}
             {...this.gestureResponder}>
             {nodes}
           </View>
-          }
         </View>
       )
     },
   })
 
-  AppRegistry.registerComponent('polipanclient', () => Polipan)
+  AppRegistry.registerComponent('bubble', () => main)
 
-  return Polipan
+  return main
 }
